@@ -2,12 +2,6 @@ module.exports = {
   purge: ["./pages/**/*.{js,ts,jsx,tsx}", "./components/**/*.{js,ts,jsx,tsx}"],
   darkMode: false, // or 'media' or 'class'
   theme: {
-    minWidth: {
-      nav: "750px",
-    },
-    maxWidth: {
-      nav: "850px",
-    },
     colors: {
       cream: {
         DEFAULT: "#FFFBF5",
@@ -20,15 +14,36 @@ module.exports = {
       brown: {
         DEFAULT: "#544332",
       },
+      olive: {
+        DEFAULT: "#41473C"
+      }
     },
     extend: {
+      boxShadow: {
+        card: '1px 1px 4px #B9B9B9',
+      },
+      height: {
+        card: '320px',
+      },
+      width: {
+        card: '420px'
+      },
+      minWidth: {
+        nav: "750px",
+      },
+      maxWidth: {
+        nav: "1000px",
+      },
       letterSpacing: {
-        h1: "0.075em",
+        header: "0.075em",
       },
       fontFamily: {
         title: ["Glacial Indifference"],
         text: ["Assistant"],
       },
+      fontSize: {
+        '5xl': '2.5rem'
+      }
     },
   },
   variants: {

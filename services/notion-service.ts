@@ -52,4 +52,9 @@ export class NotionService {
 
     return pageBlocks.results;
   }
+
+  @UseBlockCache(blockCache)
+  async getPage(pageId: string) {
+    return this.client.pages.retrieve({ page_id: pageId });
+  }
 }

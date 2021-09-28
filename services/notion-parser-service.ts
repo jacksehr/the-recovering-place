@@ -6,46 +6,45 @@ import type {
   TitlePropertyValue,
 } from "@notionhq/client/build/src/api-types";
 
+import { NotionService } from "./notion-service";
+
 export interface RenderableBlock {
-  type: "heading_1" | "heading_2" | "heading_3" | "paragraph" | "card_title";
+  type:
+    | "heading_1"
+    | "heading_2"
+    | "heading_3"
+    | "paragraph"
+    | "mention"
+    | "title";
   text: string;
 }
 
 const NOTION_BASE_URL = "https://www.notion.so/";
 
 export class NotionParserService {
-  private blockCache: Map<string, RenderableBlock[]> = new Map();
-
-  constructor(private readonly client: Client) {}
+  constructor(private readonly notionService: NotionService) {}
 
   async blockTransformer(block: Block): Promise<RenderableBlock[]> {
-    const { id, type } = block;
+    const { type } = block;
 
-    const cachedBlocks = this.blockCache.get(id);
-    if (cachedBlocks?.length) {
-      return cachedBlocks;
-    }
+    const renderableBlocks: RenderableBlock[] = [];
 
     switch (type) {
       case "heading_1":
       case "heading_2":
+      case "heading_3":
       case "paragraph":
-        const renderableBlocks: RenderableBlock[] = [];
-
         // @ts-ignore; TypeScript can't work out that block[type] will always be present
         for (const richText of block[type].text) {
           const blocks = await this.richTextTransformer(richText, type);
-          this.blockCache.set(id, blocks);
           renderableBlocks.push(...blocks);
         }
-
-        return renderableBlocks;
     }
 
-    return [];
+    return renderableBlocks;
   }
 
-  async richTextTransformer(
+  private async richTextTransformer(
     richText: RichText,
     parentType?: RenderableBlock["type"]
   ): Promise<RenderableBlock[]> {
@@ -57,30 +56,32 @@ export class NotionParserService {
         return [{ type: parentType ?? "paragraph", text: plainText }];
       case "mention":
         if (!richText?.href) {
-          return [{ type: parentType ?? "paragraph", text: plainText }];
+          return [{ type: parentType ?? "mention", text: plainText }];
         }
 
         const mentionedPageId = richText.href.replace(NOTION_BASE_URL, "");
 
         const [mentionedPage, mentionedBlocks] = await Promise.all([
-          this.client.pages.retrieve({ page_id: mentionedPageId }),
-          this.client.blocks.children.list({
-            block_id: mentionedPageId,
-          }),
+          this.notionService.getPage(mentionedPageId),
+          this.notionService.getPageBlocks(mentionedPageId),
         ]);
 
         const renderableBlocks: RenderableBlock[] = [];
+
+        if (!mentionedPage?.properties?.title) return [];
 
         const titleRichText = (
           mentionedPage.properties.title as TitlePropertyValue
         ).title[0];
 
         renderableBlocks.push(
-          ...await this.richTextTransformer(titleRichText, "card_title")
+          ...(await this.richTextTransformer(titleRichText, "title"))
         );
 
-        for (const mentionedBlock of mentionedBlocks.results) {
-          renderableBlocks.push(...await this.blockTransformer(mentionedBlock));
+        for (const mentionedBlock of mentionedBlocks) {
+          renderableBlocks.push(
+            ...(await this.blockTransformer(mentionedBlock))
+          );
         }
 
         return renderableBlocks;

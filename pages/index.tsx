@@ -2,9 +2,11 @@ import { Client as NotionClient } from "@notionhq/client";
 import type { NextPage } from "next";
 import Head from "next/head";
 import Image from "next/image";
+import Link from "next/link";
 
 import Masthead from "../components/masthead";
 import NavBar from "../components/navbar";
+import { Header1, Header2, Paragraph } from "../components/headers";
 
 import {
   NotionParserService,
@@ -13,6 +15,8 @@ import {
 
 import greenBg from "../public/plant-bg.png";
 import { NotionService } from "../services/notion-service";
+import React, { AnchorHTMLAttributes } from "react";
+import { Cards } from "../components/cards";
 
 const HOME_PAGE_NAME = "Home";
 
@@ -21,8 +25,87 @@ interface HomePageProps {
   content: RenderableBlock[][];
 }
 
+// identify what the block group is
+// render each part
+const renderContent = (content: HomePageProps["content"]): JSX.Element[] => {
+  const elementsToRender: JSX.Element[] = [];
+
+  const renderMap: { [key in RenderableBlock["type"]]?: React.FC<any> } = {
+    heading_1: Header1,
+    heading_2: Header2,
+    heading_3: Header2,
+    paragraph: Paragraph,
+  };
+
+  if (!content?.length) return elementsToRender;
+
+  let i = 0;
+  while (i < content.length) {
+    const blockGroup = content[i++];
+
+    if (!blockGroup?.length) {
+      continue;
+    }
+
+    const [{ type, text }] = blockGroup;
+
+    // @todo make this recursive i.e. not shit
+    if (text.startsWith("#")) {
+      const renderDirective = text.replace(/^#/, "");
+      if (renderDirective === "cards") {
+        let nextRenderDirective = "";
+
+        const cardBlocks: RenderableBlock[][] = [];
+
+        while (nextRenderDirective !== "end_cards") {
+          const nextBlock = content[i++];
+
+          if (!nextBlock?.length) { continue; }
+
+          const [{ text: nextBlockText }] = nextBlock;
+
+          if (nextBlockText.startsWith("#")) {
+            nextRenderDirective = nextBlockText.replace(/^#/, "");
+          } else {
+            cardBlocks.push(nextBlock);
+          }
+        }
+
+        elementsToRender.push(<Cards key={i} cards={cardBlocks} />);
+      }
+    } else {
+      const Component = renderMap[type];
+      if (Component) {
+        elementsToRender.push(<Component key={i}>{text}</Component>);
+      }
+    }
+  }
+
+  return elementsToRender;
+};
+
+// `onClick`, `href`, and `ref` need to be passed to the DOM element
+// for proper handling
+const MyButton = React.forwardRef<HTMLAnchorElement, AnchorHTMLAttributes<{}>>(({ onClick, href }, ref) => {
+  return (
+    <a href={href} onClick={onClick} ref={ref}>
+      Click Me
+    </a>
+  )
+})
+
+function Button() {
+  return (
+    <Link href="/" passHref>
+      <MyButton />
+    </Link>
+  )
+}
+
 const Home: NextPage<HomePageProps> = (props) => {
   const { allPages, content } = props;
+
+  const renderedContent = renderContent(content);
 
   return (
     <>
@@ -33,48 +116,26 @@ const Home: NextPage<HomePageProps> = (props) => {
           rel="stylesheet"
         />
       </Head>
-      <div className="bg-cream relative h-screen v-screen">
+      <div className="bg-cream">
         <Masthead />
         <NavBar navItems={allPages.map(({ title }) => title)} />
-        <div className="relative h-5/6">
+        <div className="relative h-auto">
           <Image
             src={greenBg}
             layout="fill"
             objectFit="cover"
             placeholder="blur"
           />
-          <div className="relative h-full w-4/5 m-auto pt-16">
-            <div className="flex-col bg-cream-dark bg-opacity-80 h-full text-center py-16 px-24">
-              <p className="font-title text-3xl uppercase tracking-h1 text-brown">
-                Start your recovery with us
-              </p>
-              <p
-                className="font-text text-base text-brown text-left pt-6 mb-12
-              "
-              >
-                The Recovering Place is a Dietitian Service built to support
-                healthy relationships with food and body. We offer nutrition
-                assessment and support at our clinics located across Greater
-                Sydney, as well as consults online in the comfort of your own
-                home.
-              </p>
-
-              <p className="font-title text-2xl uppercase tracking-h1 text-brown">
-                Our Services
-              </p>
-              <p
-                className="font-text text-base text-brown text-left pt-6
-              "
-              >
-                The Recovering Place is a Dietitian Service built to support
-                healthy relationships with food and body. We offer nutrition
-                assessment and support at our clinics located across Greater
-                Sydney, as well as consults online in the comfort of your own
-                home.
-              </p>
+          <div className="relative h-full w-4/5 pt-16 m-auto">
+            <div className="flex-col bg-cream-dark bg-opacity-80 h-full text-center pb-16 px-36 max-w-6xl m-auto">
+              {renderedContent}
+              <Button/>
             </div>
           </div>
         </div>
+      </div>
+      <div className="relative h-60 bg-olive shadow-inner">
+
       </div>
     </>
   );
@@ -86,7 +147,7 @@ export async function getStaticProps(): Promise<{ props: HomePageProps }> {
   });
 
   const notionService = new NotionService(notionClient);
-  const parser = new NotionParserService(notionClient);
+  const notionParser = new NotionParserService(notionService);
 
   const allChildPages = await notionService.getChildPages(
     process.env.NOTION_SITEMAP_ID!
@@ -103,7 +164,7 @@ export async function getStaticProps(): Promise<{ props: HomePageProps }> {
   const homepageBlocks = await notionService.getPageBlocks(homepageId);
 
   const content = await Promise.all(
-    homepageBlocks.flatMap(async (block) => parser.blockTransformer(block))
+    homepageBlocks.map(async (block) => notionParser.blockTransformer(block))
   );
 
   return { props: { allPages, content } };
